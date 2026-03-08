@@ -1,11 +1,14 @@
 mod tokens;
 
 use serde::{Deserialize, Serialize};
-use tokio::net::TcpListener;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream, tcp};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-use rustls::{ServerConfig, ServerConnection, Stream, pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject}};
-use rustls::server::Acceptor;
+//use rustls::{ServerConfig, ServerConnection, Stream, pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject}};
+use tokio_rustls::rustls::{ServerConfig, ServerConnection, Stream, 
+    pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject}
+};
+use tokio_rustls::server::TlsAcceptor;
 
 use tokio::sync::Mutex;
 use std::sync::Arc;
@@ -14,16 +17,17 @@ use tokio::time::Duration;
 use std::collections::HashMap;
 use std::fs::read_to_string;
 
-pub trait Streamable: std::io::Read + std::io::Write {}
-impl<T: ?Sized + std::io::Read + std::io::Write> Streamable for T {}
+pub trait Streamable: AsyncReadExt + AsyncWriteExt + std::marker::Unpin {}
+impl<T: ?Sized + AsyncReadExt + AsyncWriteExt + std::marker::Unpin> Streamable for T {}
+pub struct StreamableWrapper<T: Streamable>(Box<T>);
 
-impl dyn Streamable + '_ {
-    fn read_line(&mut self, s : &mut String) -> Result<usize, String> {
+impl<T : AsyncReadExt + AsyncWriteExt + std::marker::Unpin> StreamableWrapper<T> {
+    async fn read_line(&mut self, s : &mut String) -> Result<usize, String> {
         let mut buf = [0; 1];
         let mut r = vec![];
 
         while buf != *b"\n" {
-            match self.read(&mut buf) {
+            match self.0.read(&mut buf).await {
                 Ok(v) => { if v == 0 { break; } },
                 Err(e) => { return Err(format!("{}", e)) },
             }
@@ -38,6 +42,19 @@ impl dyn Streamable + '_ {
         };
 
         return Ok(len);
+    } 
+}
+impl<T: Streamable> std::ops::Deref for StreamableWrapper<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref()
+    }
+}
+impl<T: Streamable> std::ops::DerefMut for StreamableWrapper<T> {
+
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.as_mut()
     }
 }
 
@@ -76,21 +93,59 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         loop {
             cdata.tokens.lock().await.cleanup();
             tokio::time::sleep(Duration::from_hours(1)).await;
-        } // SHUTDOWN WITH EVERYTHING ELSE
+        } // TODO SHUTDOWN WITH EVERYTHING ELSE
     } );
 
     let listener = TcpListener::bind(data.conf.addr.clone()).await?;
+    let acceptor = Arc::new(TlsAcceptor::from(conf.clone()));
+
     println!("hello listener");
 
     loop {
-        let (mut socket, _) = listener.accept().await?;
+        let (tcp_stream, _) = listener.accept().await?;
 
+        let data = data.clone();
+        let accp = acceptor.clone();
         tokio::spawn(async move {
-            socket.read(&mut [0; 1024]).await.expect("asdasdasda");
-            if let Err(e) = socket.write_all(b"asdasdasd").await {
-                eprintln!("failed to write to socket; err = {:?}", e);
-                return;
-            }
+            socket(tcp_stream, data, accp).await;
         });
     }
+}
+
+async fn socket(mut tcp_stream : TcpStream, data : Arc<Data>, accp : Arc<TlsAcceptor>) {
+
+    println!("hello client");
+
+    //tcp_stream.read(&mut [0; 1024]).await.expect("asdasdasda");
+
+    let mut httpscheck : [u8; 1] = [0];
+    _ = match tcp_stream.peek(&mut httpscheck).await {
+        Ok(v) => v,
+        Err(e) => { eprintln!("{}", e); return; },
+    };
+
+    if httpscheck == [22] {
+
+        println!("{:?} secure", httpscheck);
+
+        let tcp_stream = match accp.accept(tcp_stream).await {
+            Ok(v) => v,
+            Err(_e) => { return; },
+        };
+        handle(StreamableWrapper(Box::new(tcp_stream))).await;
+
+    } else {
+
+        println!("{:?} insecure", httpscheck);
+        handle(StreamableWrapper(Box::new(tcp_stream))).await;
+
+    }
+
+
+}
+
+async fn handle<T : Streamable>(mut stream : StreamableWrapper<T>) {
+    stream.read(&mut [0; 32]).await.unwrap();
+    stream.write_all(b"asdasdasdasdasdasdasdasds").await.unwrap();
+    stream.flush().await.unwrap();
 }
