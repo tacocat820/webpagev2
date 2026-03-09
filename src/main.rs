@@ -128,11 +128,11 @@ async fn socket(mut tcp_stream : TcpStream, data : Arc<Data>, accp : Arc<TlsAcce
 
         println!("{:?} secure", httpscheck);
 
-        let tcp_stream = match accp.accept(tcp_stream).await {
+        let stream = match accp.accept(tcp_stream).await {
             Ok(v) => v,
             Err(_e) => { return; },
         };
-        handle(StreamableWrapper(Box::new(tcp_stream))).await;
+        handle(StreamableWrapper(Box::new(stream))).await;
 
     } else {
 
@@ -144,8 +144,19 @@ async fn socket(mut tcp_stream : TcpStream, data : Arc<Data>, accp : Arc<TlsAcce
 
 }
 
+struct Headers {
+    content_type : String   
+}
+
 async fn handle<T : Streamable>(mut stream : StreamableWrapper<T>) {
-    stream.read(&mut [0; 32]).await.unwrap();
-    stream.write_all(b"asdasdasdasdasdasdasdasds").await.unwrap();
+    let mut act = String::new();
+    match stream.read_line(&mut act).await {
+        Ok(_) => {},
+        Err(e) => { println!("{}", e); return; },
+    }
+    
+    println!("{}", act);
+    stream.write(b"asd").await.unwrap();
     stream.flush().await.unwrap();
+    println!("goodbye");
 }
