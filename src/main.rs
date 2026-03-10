@@ -1,11 +1,13 @@
+mod modules;
 mod tokens;
+mod ls;
 
-use serde::{Deserialize, Serialize};
-use tokio::net::{TcpListener, TcpStream, tcp};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use serde::Deserialize;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 //use rustls::{ServerConfig, ServerConnection, Stream, pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject}};
-use tokio_rustls::rustls::{ServerConfig, ServerConnection, Stream, 
+use tokio_rustls::rustls::{ServerConfig, 
     pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject}
 };
 use tokio_rustls::server::TlsAcceptor;
@@ -16,10 +18,10 @@ use std::sync::Arc;
 use tokio::time::Duration;
 
 use std::fs::read_to_string;
+use std::fs::read;
 
 //  TODO
 // ContentType enum?
-// Headers struct?
 // also ResponseHeaders
 
 pub trait Streamable: AsyncReadExt + AsyncWriteExt + std::marker::Unpin {}
@@ -49,7 +51,7 @@ impl<T : AsyncReadExt + AsyncWriteExt + std::marker::Unpin> StreamableWrapper<T>
         Ok(len)
     } 
 
-    async fn respond(&mut self, content : Vec<u8>, status : &str, content_type : Option<&str>) -> Result<(), std::io::Error> {
+    async fn respond(&mut self, content : Vec<u8>, status : &str, content_type : Option<&str>) -> Result<(), String> {
         let length = content.len();
         let content_type = match content_type {
             Some(v) => format!("Content-Type: {}\r\n", v),
@@ -63,10 +65,45 @@ impl<T : AsyncReadExt + AsyncWriteExt + std::marker::Unpin> StreamableWrapper<T>
         let reply = [responsebytes, &content].concat(); 
         match self.write_all(&reply).await {
             Ok(_) => Ok(()),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    async fn respond_file(&mut self, path : &str, status : &str) -> Result<(), String> {
+        let content = match read(path) {
+            Ok(v) => v,
+            Err(e) => { return Err(e.to_string()) },
+        };
+        match self.respond(content, status, content_type_from_ext(
+                    match path.rsplit_once(".") {
+                        Some(v) => v.1,
+                        None => { return Err("Cannot split".to_string()); },
+                    })
+                ).await {
+            Ok(_) => Ok(()),
             Err(e) => Err(e),
         }
     } 
 }
+
+fn content_type_from_ext(ext : &str) -> Option<&str> {
+    match ext {
+        "png" => Some("image/png"),
+        "apng" => Some("image/apng"),
+        "gif" => Some("image/gif"),
+        "css" => Some("text/css"),
+        "html" => Some("text/html"),
+        "js" => Some("text/javascript"),
+        "txt" => Some("text/plain"),
+        "pdf" => Some("application/pdf"),
+        "json" => Some("application/json"),
+        "mp3" => Some("audio/mpeg"),
+        "mp4" => Some("video/mp4"),
+        "gz" => Some("application/gzip"),
+        _ => None,
+    }
+}
+
 impl<T: Streamable> std::ops::Deref for StreamableWrapper<T> {
     type Target = T;
 
@@ -155,12 +192,12 @@ async fn socket(tcp_stream : TcpStream, data : Arc<Data>, accp : Arc<TlsAcceptor
             Ok(v) => v,
             Err(_e) => { return; },
         };
-        let _ = handle(StreamableWrapper(Box::new(stream))).await;
+        let _ = handle(StreamableWrapper(Box::new(stream)), data).await;
 
     } else {
 
         println!("{:?} insecure", httpscheck);
-        let _ = handle(StreamableWrapper(Box::new(tcp_stream))).await;
+        let _ = handle(StreamableWrapper(Box::new(tcp_stream)), data).await;
 
     }
 
@@ -178,10 +215,8 @@ impl Headers {
         match key {
             "content-type" => { self.content_type = Some(v.to_string()); },
             "cookies" => { self.cookies = v.split(";").map(|s| {
-                match s.split_once("=") {
-                    Some(v) => (v.0.to_string(), v.1.to_string()),
-                    None => { ("".to_string(), "".to_string()) },
-                }
+                let a = s.split_once("=").unwrap_or(("", ""));
+                (a.0.to_string(), a.1.to_string())
             }).collect(); },
             "content-length" => { self.content_length = Some(match v.parse::<u64>() {
                 Ok(v) => v,
@@ -193,16 +228,11 @@ impl Headers {
     } 
 }
 
-async fn handle<T : Streamable>(mut stream : StreamableWrapper<T>) -> Result<(), String> {
+async fn handle<T : Streamable>(mut stream : StreamableWrapper<T>, data : Arc<Data>) -> Result<(), String> {
     let mut act = String::new();
     let mut h = Headers::default();
     _ = stream.read_line(&mut act).await?;
     
-
-    match stream.respond(b"fuck".to_vec(), "200 OK", Some("text/plain")).await {
-        Ok(_) => {},
-        Err(e) => { return Err(e.to_string()) },
-    };
 
     loop {
         let mut l = String::new();
@@ -217,9 +247,22 @@ async fn handle<T : Streamable>(mut stream : StreamableWrapper<T>) -> Result<(),
         } 
     }
 
-    
+
 
     println!("{:#?}", h);
+
+    let act : Vec<&str> = act.split(' ').collect();
+    if act.len() != 3 { return Err("Invalid act".to_string()); }
+
+    let method = act.get(0).unwrap();
+    let mut page : Vec<&str> = act.get(1).unwrap().split("/").collect();
+    page.remove(0);
+    
+    match page[0] {
+        "assets" => modules::assets::handle(&mut stream, data, &h, method, &page).await?,
+        _ => {}
+    }
+
 
 
 
