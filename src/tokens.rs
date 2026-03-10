@@ -23,7 +23,7 @@ impl Tokens {
         for i in self.ls.iter_mut() {
             i.1.expires -= 1;
             
-            if i.1.expires <= 0 { rm.push(i.0.clone()); }
+            if i.1.expires == 0 { rm.push(i.0.clone()); }
         }
 
         for i in rm.iter() {
@@ -34,9 +34,9 @@ impl Tokens {
 
     pub fn get(&self, token : &str) -> Option<()> {
         if self.ls.contains_key(token) {
-            return Some(());
+            Some(())
         } else {
-            return None;
+            None
         }
     }
 
@@ -52,6 +52,6 @@ impl Tokens {
         }
 
         self.ls.insert(rand.clone(), Token { expires: 10 });
-        return rand;
+        rand
     }
 }
