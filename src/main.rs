@@ -91,6 +91,7 @@ fn content_type_from_ext(ext : &str) -> Option<&str> {
         "png" => Some("image/png"),
         "apng" => Some("image/apng"),
         "gif" => Some("image/gif"),
+        "ico" => Some("image/x-icon"),
         "css" => Some("text/css"),
         "html" => Some("text/html"),
         "js" => Some("text/javascript"),
@@ -258,9 +259,14 @@ async fn handle<T : Streamable>(mut stream : StreamableWrapper<T>, data : Arc<Da
     let mut page : Vec<&str> = act.get(1).unwrap().split("/").collect();
     page.remove(0);
     
+    println!("{:?}", page);
+
     match page[0] {
         "assets" => modules::assets::handle(&mut stream, data, &h, method, &page).await?,
-        _ => {}
+        "project" => modules::projects::project(&mut stream, data, &h, method, &page).await?,
+        "projects" => modules::projects::projects(&mut stream, data, &h, method, &page).await?,
+        "blog" => modules::blog::handle(&mut stream, data, &h, method, &page).await?,
+        _ => modules::home::handle(&mut stream, data, &h, method, &page).await?,
     }
 
 
