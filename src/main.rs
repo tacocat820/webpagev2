@@ -193,7 +193,8 @@ async fn socket(tcp_stream : TcpStream, data : Arc<Data>, accp : Arc<TlsAcceptor
             Ok(v) => v,
             Err(_e) => { return; },
         };
-        let _ = handle(StreamableWrapper(Box::new(stream)), data).await;
+        //let _ = handle(StreamableWrapper(Box::new(stream)), data).await;
+        println!("{:?}", handle(StreamableWrapper(Box::new(stream)), data).await);
 
     } else {
 
@@ -213,13 +214,13 @@ struct Headers {
 }
 impl Headers {
     fn set_from_str(&mut self, key : &str, v : &str) -> Result<(), String> {
-        match key {
+        match key.to_lowercase().as_str() {
             "content-type" => { self.content_type = Some(v.to_string()); },
-            "cookies" => { self.cookies = v.split(";").map(|s| {
+            "cookie" => { self.cookies = v.split(";").map(|s| {
                 let a = s.split_once("=").unwrap_or(("", ""));
-                (a.0.to_string(), a.1.to_string())
+                (a.0.trim().to_string(), a.1.trim().to_string())
             }).collect(); },
-            "content-length" => { self.content_length = Some(match v.parse::<u64>() {
+            "content-length" => { self.content_length = Some(match v.trim().parse::<u64>() {
                 Ok(v) => v,
                 Err(e) => { return Err(format!("{}", e)); },
             }); },
@@ -230,12 +231,13 @@ impl Headers {
 }
 
 async fn handle<T : Streamable>(mut stream : StreamableWrapper<T>, data : Arc<Data>) -> Result<(), String> {
+
     let mut act = String::new();
     let mut h = Headers::default();
     _ = stream.read_line(&mut act).await?;
-    
 
     loop {
+        
         let mut l = String::new();
 
         let len = stream.read_line(&mut l).await?;
@@ -247,7 +249,6 @@ async fn handle<T : Streamable>(mut stream : StreamableWrapper<T>, data : Arc<Da
             h.set_from_str(key, v)?;
         } 
     }
-
 
 
     println!("{:#?}", h);
@@ -266,6 +267,8 @@ async fn handle<T : Streamable>(mut stream : StreamableWrapper<T>, data : Arc<Da
         "project" => modules::projects::project(&mut stream, data, &h, method, &page).await?,
         "projects" => modules::projects::projects(&mut stream, data, &h, method, &page).await?,
         "blog" => modules::blog::handle(&mut stream, data, &h, method, &page).await?,
+        "auth" => modules::auth::handle(&mut stream, data, &h, method, &page).await?,
+        "mystuff" => modules::mystuff::handle(&mut stream, data, &h, method, &page).await?,
         _ => modules::home::handle(&mut stream, data, &h, method, &page).await?,
     }
 
