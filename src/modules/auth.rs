@@ -1,17 +1,11 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::Data;
-use crate::ls::ls;
 use crate::Headers;
 
 use crate::Streamable;
 use crate::StreamableWrapper;
 
-use chrono::Datelike;
-use chrono::prelude::Utc;
-use rand::RngExt;
-use rand::SeedableRng;
 
 pub async fn handle<T : Streamable>(stream : &mut StreamableWrapper<T>, data : Arc<Data>, headers : &Headers, method : &str, page : &Vec<&str>) -> Result<(), String> {
 

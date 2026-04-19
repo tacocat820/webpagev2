@@ -70,12 +70,12 @@ pub fn preview(name : &str) -> Result<Project, String> {
 
     let mut info = &read[0..match read.find("-->") {
         Some(v) => v,
-        None => { return Err(format!("Comment ending sequence not found")); },
+        None => { return Err("Comment ending sequence not found".to_string()); },
     }];
     
     info = match info.strip_prefix("<!--") {
         Some(v) => v,
-        None => { return Err(format!("Unable to strip comment prefix")); },
+        None => { return Err("Unable to strip comment prefix".to_string()); },
     };
 
     let mut parsed : Project = match toml::from_str(info) {
@@ -84,7 +84,7 @@ pub fn preview(name : &str) -> Result<Project, String> {
     };
     parsed.id = Some(name.to_string());
 
-    return Ok(parsed);
+    Ok(parsed)
      
 
 }
@@ -116,7 +116,7 @@ pub fn ls_projects(left : usize, right : usize) -> Result<Vec<Project>, String> 
         });
         
     }    
-    return Ok(projects);
+    Ok(projects)
     //let list = 
 }
 
@@ -125,7 +125,7 @@ pub async fn previews<T : Streamable>(stream : &mut StreamableWrapper<T>, _data 
 
     let range : Vec<&str> = page[2].splitn(2, "-").collect();
 
-    let left : usize = match match range.get(0) {
+    let left : usize = match match range.first() {
             Some(v) => v,
             None => {
                 stream.respond(b"Invalid range".to_vec(), "400 Bad Request", Some("text/plain")).await?; return Err("Bad request".to_string()); 

@@ -129,14 +129,14 @@ pub async fn post<T : Streamable>(stream : &mut StreamableWrapper<T>, _data : Ar
         Ok(v) => v,
         Err(_) => { stream.respond(b"asdasd".to_vec(), "500 INTERNAL SERVER ERROR", Some("text/plain")).await?; return Err("Cannot create all.posts".to_string()); },
     };
-    match f.write_all(&c.as_slice()).await {
+    match f.write_all(c.as_slice()).await {
         Ok(_) => {},
         Err(_) => { stream.respond(b"asdasd".to_vec(), "500 INTERNAL SERVER ERROR", Some("text/plain")).await?; return Err("Cannot write to all.posts".to_string()); },
     };
 
     println!("fl : {:?}", name);
 
-    stream.respond(format!("{}", name).bytes().collect(), "200 OK", Some("text/plain")).await?;
+    stream.respond(name.to_string().bytes().collect(), "200 OK", Some("text/plain")).await?;
     Ok(())
 }
 
@@ -180,7 +180,7 @@ pub async fn mkdraft<T : Streamable>(stream : &mut StreamableWrapper<T>, _data :
 
     println!("dfl : {:?}", name);
 
-    stream.respond(format!("{}", name).bytes().collect(), "200 OK", Some("text/plain")).await?;
+    stream.respond(name.to_string().bytes().collect(), "200 OK", Some("text/plain")).await?;
     Ok(())
 }
 
@@ -262,12 +262,12 @@ pub async fn draft(name : &str) -> Result<Draft, String> {
 
     let mut info = &read[0..match read.find("-->") {
         Some(v) => v,
-        None => { return Err(format!("Comment ending sequence not found")); },
+        None => { return Err("Comment ending sequence not found".to_string()); },
     }];
     
     info = match info.strip_prefix("<!--") {
         Some(v) => v,
-        None => { return Err(format!("Unable to strip comment prefix")); },
+        None => { return Err("Unable to strip comment prefix".to_string()); },
     };
 
     let mut parsed : Draft = match toml::from_str(info) {
@@ -276,7 +276,7 @@ pub async fn draft(name : &str) -> Result<Draft, String> {
     };
     parsed.content = Some( read[read.find("-->").unwrap() + 3..].to_string());
 
-    return Ok(parsed);
+    Ok(parsed)
 
 }
 
@@ -298,12 +298,12 @@ pub fn preview(name : &str) -> Result<Draft, String> {
 
     let mut info = &read[0..match read.find("-->") {
         Some(v) => v,
-        None => { return Err(format!("Comment ending sequence not found")); },
+        None => { return Err("Comment ending sequence not found".to_string()); },
     }];
     
     info = match info.strip_prefix("<!--") {
         Some(v) => v,
-        None => { return Err(format!("Unable to strip comment prefix")); },
+        None => { return Err("Unable to strip comment prefix".to_string()); },
     };
 
     let mut parsed : Draft = match toml::from_str(info) {
@@ -312,7 +312,7 @@ pub fn preview(name : &str) -> Result<Draft, String> {
     };
     parsed.id = Some(name.to_string());
 
-    return Ok(parsed);
+    Ok(parsed)
      
 
 }
@@ -340,7 +340,7 @@ pub fn ls_drafts(left : usize, right : usize) -> Result<Vec<Draft>, String> {
         });
         
     }    
-    return Ok(projects);
+    Ok(projects)
     //let list = 
 }
 
@@ -349,7 +349,7 @@ pub async fn previews<T : Streamable>(stream : &mut StreamableWrapper<T>, _data 
 
     let range : Vec<&str> = page[2].splitn(2, "-").collect();
 
-    let left : usize = match match range.get(0) {
+    let left : usize = match match range.first() {
             Some(v) => v,
             None => {
                 stream.respond(b"Invalid range".to_vec(), "400 Bad Request", Some("text/plain")).await?; return Err("Bad request".to_string()); 

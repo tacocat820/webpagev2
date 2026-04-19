@@ -256,7 +256,7 @@ async fn handle<T : Streamable>(mut stream : StreamableWrapper<T>, data : Arc<Da
     let act : Vec<&str> = act.split(' ').collect();
     if act.len() != 3 { return Err("Invalid act".to_string()); }
 
-    let method = act.get(0).unwrap();
+    let method = act.first().unwrap();
     let mut page : Vec<&str> = act.get(1).unwrap().split("/").collect();
     page.remove(0);
     
